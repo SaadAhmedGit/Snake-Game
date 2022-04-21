@@ -54,7 +54,7 @@ void DrawSnake(const Snake& S);
 void gotoRowCol(const Coord& pos);
 void initSnake(Player& P, const Board& B);
 void changeDirection(Player& P, const char c);
-bool WallTouch(const Snake& S, const Board& B);
+//bool WallTouch(const Snake& S, const Board& B);
 bool AllSnakesAlive(const Player* Ps, const int pCount);
 void initPlayer(Player& P, const char* name, const Board& B);
 Player* initGame(Board& B, const int pCount, const char* name);
@@ -109,19 +109,32 @@ void initPlayer(Player& P, const char* name, const Board& B) {
 	}
 	initSnake(P, B);
 }
-
-Player* initGame(Board& B, const int pCount, const char* name) {
+void initBoard(Board& B) {
 	B.start.x = 5;
 	B.start.y = 5;
 	B.W = 110;
 	B.H = 20;
-	//Allocate a 2D char array with all nulls using B.bMap
 	B.bMap = new char[B.W * B.H]{};
-	//Set the borders of the board using B.bMap
+	//Add 's' meaning solid wall, at the borders of board
 	for (int i = 0; i < B.W; i++) {
 		B.bMap[i] = 's';
 		B.bMap[i + (B.H - 1) * B.W] = 's';
 	}
+	for (int i = 0; i < B.H; i++) {
+		B.bMap[i * B.W] = 's';
+		B.bMap[i * B.W + B.W - 1] = 's';
+	}
+	//Add 'p' chars in the shape of an empty 8x8 square near the middle
+	for (int i = B.start.x; i < B.start.x + 8; i++) {
+		for (int j = B.start.y; j < B.start.y + 8; j++) {
+			B.bMap[i + j * B.W] = 'p';
+		}
+	}
+
+}
+
+Player* initGame(Board& B, const int pCount, const char* name) {
+	initBoard(B);
 	Player* Ps = new Player[pCount]{};
 	for (int i = 0; i < pCount; i++) {
 		Ps[i].pID = i + 1;
@@ -134,25 +147,22 @@ Player* initGame(Board& B, const int pCount, const char* name) {
 
 void DisplayBoard(const Board& B) {
 	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), 3);
-	gotoRowCol({ B.start.x - 1, B.start.y - 1 });
-	cout << char(176);
-	gotoRowCol({ B.start.x + B.W, B.start.y - 1 });
-	cout << char(176);
-	gotoRowCol({ B.start.x - 1, B.start.y + B.H });
-	cout << char(176);
-	gotoRowCol({ B.start.x + B.W, B.start.y + B.H });
-	cout << char(176);
-	for (int i = 0; i < B.W; i++) {
-		gotoRowCol({ B.start.x + i, B.start.y - 1 });
-		cout << char(176);
-		gotoRowCol({ B.start.x + i, B.start.y + B.H });
-		cout << char(176);
-	}
+	//Display B.bMap
 	for (int i = 0; i < B.H; i++) {
-		gotoRowCol({ B.start.x - 1, B.start.y + i });
-		cout << char(176);
-		gotoRowCol({ B.start.x + B.W, B.start.y + i });
-		cout << char(176);
+		for (int j = 0; j < B.W; j++) {
+			switch (B.bMap[i * B.W + j]) {
+			case 's':
+				gotoRowCol({ j + B.start.y, i + B.start.x });
+				cout << char(219);
+				break;
+			case 'p':
+				gotoRowCol({ j + B.start.y, i + B.start.x });
+				cout << char(176);
+				break;
+			default:
+				break;
+			}
+		}
 	}
 	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), 15);
 }
@@ -332,7 +342,20 @@ void DisplayScores(const Player* Ps, const Board& B, const int pCount) {
 	}
 }
 char CheckWallHit(const Snake& S, const Board& B) {
-	return B.bMap[S.body[0].x + S.body[0].y];
+	return B.bMap[((S.body[0].y-B.start.y) * B.W) + S.body[0].x - B.start.x];
+}
+bool deductScore(Player& P) {
+	if (P.score - 10 >= 0) {
+		P.score -= 10;
+		return true;
+	}
+	if (P.pSnake.len - 2 > 1) {
+		P.pSnake.len -= 2;
+		return true;
+	}
+	else {
+		return false;
+	}
 }
 int main() {
 	int pCount = 2;
@@ -365,23 +388,22 @@ int main() {
 					break;
 				case 'p':
 					PlaySound(sfx, sfx_snd, "sfx_hit.wav", 20, 1.0f);
+					if (!deductScore(Ps[i])) {
+						KillSnake(Ps[i]);
+						PlaySound(sfx, sfx_snd, "sfx_snake_death.wav", 40, 1);
+						continue;
+					}
 					break;
 				default:
 					break;
 				}
-				if (CheckSnakeKilled(Ps[i].pSnake) || WallTouch(Ps[i].pSnake, B)) {
+				if (CheckSnakeKilled(Ps[i].pSnake)) {
 					KillSnake(Ps[i]);
 					PlaySound(sfx, sfx_snd, "sfx_snake_death.wav", 40, 1);
 					continue;
 				}
 				else if (CheckSnakeTouch(Ps, i, pCount)) {
-					if (Ps[i].score - 10 >= 0) {
-						Ps[i].score -= 10;
-					}
-					if (Ps[i].pSnake.len - 2 > 1) {
-						Ps[i].pSnake.len -= 2;
-					}
-					else {
+					if (!deductScore(Ps[i])) {
 						KillSnake(Ps[i]);
 						PlaySound(sfx, sfx_snd, "sfx_snake_death.wav", 40, 1);
 						continue;
@@ -409,12 +431,6 @@ int main() {
 	cout << "GAME OVER..."; (void)_getch();
 	return 0;
 
-}
-bool WallTouch(const Snake& S, const Board& B) {
-	if (S.body[0].x == B.start.x || S.body[0].x == B.start.x + B.W - 1 || S.body[0].y == B.start.y || S.body[0].y == B.start.y + B.H - 1) {
-		return true;
-	}
-	return false;
 }
 bool AllSnakesAlive(const Player* Ps, const int pCount) {
 	for (int i = 0; i < pCount; i++) {
